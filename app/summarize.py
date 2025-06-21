@@ -1,15 +1,18 @@
-import subprocess
+import openai
+import os
+
+openai.api_key = os.getenv("OPENAI_API_KEY")
 
 def generate_summary(captions):
-    prompt = "Summarize this trip in a travel journal style:\n" + "\n".join([f"- {cap}" for _, cap in captions])
-    try:
-        result = subprocess.run(
-            ["ollama", "run", "mistral"],
-            input=prompt.encode("utf-8"),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=120
-        )
-        return result.stdout.decode("utf-8").strip()
-    except Exception as e:
-        return f"Error generating summary: {e}"
+    text = "\n".join([f"{img}: {cap}" for img, cap in captions])
+    prompt = f"""Generate a trip summary from these image captions:
+
+{text}
+
+Summarize like a travel journal with highlights, places, and activities.
+"""
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response['choices'][0]['message']['content']

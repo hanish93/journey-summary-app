@@ -3,7 +3,4 @@ scenedetect
 torch
 transformers
 Pillow
-ultralytics
-folium
-streamlit
-requests
+openai
