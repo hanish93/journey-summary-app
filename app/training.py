@@ -1,30 +1,67 @@
-import os
 import torch
-from celery import Celery
-from .models import JourneyModel, train_model, version_model
+from torch.utils.data import Dataset, DataLoader
+from pytorch_lightning import LightningModule, Trainer
+from pytorch_lightning.callbacks import ModelCheckpoint
 
-celery = Celery('training', broker='redis://redis:6379/0')
-TRAINING_THRESHOLD = 10
-
-def add_to_training_queue(video_path, comments):
-    training_data_dir = os.path.join("training_data")
-    os.makedirs(training_data_dir, exist_ok=True)
-    with open(os.path.join(training_data_dir, f"{os.path.basename(video_path)}.txt"), 'w') as f:
-        f.write(comments)
+class JourneyDataset(Dataset):
+    def __init__(self, data_dir):
+        self.data = load_training_data(data_dir)
+        
+    def __len__(self):
+        return len(self.data)
     
-    # Check if ready to train
-    count = len(os.listdir(training_data_dir))
-    if count >= TRAINING_THRESHOLD:
-        train_new_model.delay()
+    def __getitem__(self, idx):
+        return self.data[idx]
 
-@celery.task
+class PLJourneyModel(LightningModule):
+    def __init__(self):
+        super().__init__()
+        self.model = EnhancedJourneyModel()
+        self.criterion = nn.CrossEntropyLoss()
+        
+    def training_step(self, batch, batch_idx):
+        frames, labels = batch
+        outputs = self.model(frames)
+        loss = self.criterion(outputs['events'], labels)
+        self.log('train_loss', loss)
+        return loss
+    
+    def configure_optimizers(self):
+        optimizer = torch.optim.AdamW(self.parameters(), lr=1e-4)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, patience=3, factor=0.5
+        )
+        return {
+            'optimizer': optimizer,
+            'lr_scheduler': scheduler,
+            'monitor': 'train_loss'
+        }
+
 def train_new_model():
-    print("Starting model training...")
-    model = JourneyModel()
-    train_model(model)
-    version_model(model)
-    print("Model training completed and versioned.")
+    # Create dataset from training data
+    dataset = JourneyDataset('data/training_data')
+    loader = DataLoader(dataset, batch_size=32, shuffle=True)
     
-    # Clear training data
-    for file in os.listdir("training_data"):
-        os.remove(os.path.join("training_data", file))
+    # Initialize model
+    model = PLJourneyModel()
+    
+    # Configure training
+    checkpoint_callback = ModelCheckpoint(
+        dirpath='models',
+        filename='best-{epoch:02d}-{val_loss:.2f}',
+        save_top_k=1,
+        monitor='val_loss'
+    )
+    
+    trainer = Trainer(
+        gpus=1,
+        max_epochs=20,
+        callbacks=[checkpoint_callback],
+        precision=16  # Mixed precision training
+    )
+    
+    # Train and validate
+    trainer.fit(model, loader)
+    
+    # Save final model
+    torch.save(model.state_dict(), 'models/latest.pt')

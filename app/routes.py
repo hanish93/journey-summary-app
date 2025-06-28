@@ -1,9 +1,9 @@
 import os
 import uuid
 from flask import Blueprint, jsonify, request, send_file
-from .video_processor import process_video
-from .utils import generate_summary
-from .training import add_to_training_queue
+from video_processor import process_video
+from utils import generate_summary
+from training import add_to_training_queue
 
 bp = Blueprint('routes', __name__)
 

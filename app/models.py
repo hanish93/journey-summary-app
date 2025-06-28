@@ -1,42 +1,65 @@
 import torch
 import torch.nn as nn
-import os
+import torchvision
+from efficientnet_pytorch import EfficientNet
+from transformers import ViTModel
 
-class JourneyModel(nn.Module):
-    def __init__(self):
+class EnhancedJourneyModel(nn.Module):
+    def __init__(self, num_classes=10):
         super().__init__()
-        self.conv1 = nn.Conv2d(3, 16, 3, padding=1)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(16, 32, 3, padding=1)
-        self.fc1 = nn.Linear(32 * 56 * 56, 512)
-        self.fc2 = nn.Linear(512, 10)
-
+        # Feature extractor backbone
+        self.backbone = EfficientNet.from_pretrained('efficientnet-b4')
+        
+        # Temporal modeling
+        self.lstm = nn.LSTM(1792, 512, batch_first=True, bidirectional=True)
+        
+        # Transformer for long-range dependencies
+        self.transformer = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(d_model=1024, nhead=8),
+            num_layers=2
+        )
+        
+        # Attention mechanism
+        self.attention = nn.MultiheadAttention(1024, 8)
+        
+        # Prediction heads
+        self.object_head = nn.Linear(1024, 80)  # COCO classes
+        self.event_head = nn.Sequential(
+            nn.Linear(1024, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_classes)
+        )
+        
     def forward(self, x):
-        x = self.pool(torch.relu(self.conv1(x)))
-        x = self.pool(torch.relu(self.conv2(x)))
-        x = torch.flatten(x, 1)
-        x = torch.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
-
-def load_model():
-    model_path = os.path.join("models", "latest.pt")
-    if os.path.exists(model_path):
-        model = JourneyModel()
-        model.load_state_dict(torch.load(model_path))
-        return model
-    else:
-        return JourneyModel()
-
-def predict_frame(model, frame):
-    # Placeholder implementation
-    return {"objects": []}
-
-def train_model(model):
-    # Placeholder training logic
-    pass
-
-def version_model(model):
-    model_dir = "models"
-    os.makedirs(model_dir, exist_ok=True)
-    torch.save(model.state_dict(), os.path.join(model_dir, "latest.pt"))
+        # Process video frames
+        features = []
+        for frame in x:
+            frame_features = self.backbone.extract_features(frame)
+            pooled = nn.AdaptiveAvgPool2d(1)(frame_features)
+            features.append(pooled.squeeze())
+        
+        features = torch.stack(features)
+        
+        # Temporal modeling
+        temporal, _ = self.lstm(features)
+        
+        # Transformer processing
+        transformer_out = self.transformer(temporal)
+        
+        # Attention pooling
+        attn_out, _ = self.attention(
+            transformer_out[-1].unsqueeze(0),
+            transformer_out,
+            transformer_out
+        )
+        context = attn_out.squeeze(0)
+        
+        # Predictions
+        objects = self.object_head(context)
+        events = self.event_head(context)
+        
+        return {
+            'objects': objects,
+            'events': events,
+            'features': context
+        }
