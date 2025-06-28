@@ -1,0 +1,17 @@
+journey-summary-app/
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── routes.py
+│   ├── models.py
+│   ├── video_processor.py
+│   ├── training.py
+│   └── utils.py
+├── templates/
+│   └── index.html
+├── static/
+│   └── styles.css
+├── docker-compose.yml
+├── Dockerfile
+├── requirements.txt
+└── .dockerignore

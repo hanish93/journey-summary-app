@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Journey Summary App</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Journey Summary App</h1>
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="videoFile">Upload Journey Video:</label>
+                <input type="file" id="videoFile" name="video" accept="video/*" required>
+            </div>
+            <div class="form-group">
+                <label for="comments">Comments:</label>
+                <textarea id="comments" name="comments" rows="4"></textarea>
+            </div>
+            <button type="submit">Process Video</button>
+        </form>
+        <div id="progress" class="hidden">
+            <p>Processing... <span id="progressText">0%</span></p>
+            <div class="progress-bar">
+                <div class="progress"></div>
+            </div>
+        </div>
+        <div id="result" class="hidden">
+            <h2>Processing Complete!</h2>
+            <p>Your video has been processed. You can now download the summary.</p>
+            <div class="download-options">
+                <button onclick="downloadSummary('txt')">Download as TXT</button>
+                <button onclick="downloadSummary('pdf')">Download as PDF</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        const uploadForm = document.getElementById('uploadForm');
+        const progressDiv = document.getElementById('progress');
+        const progressText = document.getElementById('progressText');
+        const resultDiv = document.getElementById('result');
+        let videoId = null;
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData();
+            formData.append('video', document.getElementById('videoFile').files[0]);
+            formData.append('comments', document.getElementById('comments').value);
+
+            // Show progress
+            progressDiv.classList.remove('hidden');
+            resultDiv.classList.add('hidden');
+
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+                if (response.status === 202) {
+                    videoId = data.id;
+                    // Start polling for status
+                    pollStatus();
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+                progressDiv.classList.add('hidden');
+            }
+        });
+
+        function pollStatus() {
+            const interval = setInterval(async () => {
+                const response = await fetch(`/status/${videoId}`);
+                const data = await response.json();
+                if (data.status === 'completed') {
+                    clearInterval(interval);
+                    progressDiv.classList.add('hidden');
+                    resultDiv.classList.remove('hidden');
+                }
+            }, 3000);
+        }
+
+        function downloadSummary(format) {
+            window.location.href = `/export/${videoId}.${format}`;
+        }
+    </script>
+</body>
+</html>

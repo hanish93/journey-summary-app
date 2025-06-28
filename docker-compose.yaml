@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    volumes:
+      - ./uploads:/app/uploads
+      - ./training_data:/app/training_data
+      - ./models:/app/models
+      - ./exports:/app/exports
+    ports:
+      - "5000:5000"
+    depends_on:
+      - redis
+
+  video_worker:
+    build: .
+    command: celery -A app.video_processor worker --loglevel=info
+    volumes:
+      - ./uploads:/app/uploads
+      - ./training_data:/app/training_data
+      - ./models:/app/models
+      - ./exports:/app/exports
+    depends_on:
+      - redis
+      - web
+
+  training_worker:
+    build: .
+    command: celery -A app.training worker --loglevel=info
+    volumes:
+      - ./training_data:/app/training_data
+      - ./models:/app/models
+    depends_on:
+      - redis
+      - web
+
+  redis:
+    image: "redis:alpine"
