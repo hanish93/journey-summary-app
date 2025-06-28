@@ -1,9 +1,0 @@
-flask
-celery
-redis
-opencv-python-headless
-torch
-torchvision
-fpdf
-gunicorn
-eventlet
