@@ -1,0 +1,41 @@
+# GPU worker Dockerfile
+FROM nvidia/cuda:11.8.0-base-ubuntu20.04
+
+# Install Python 3.9 and system dependencies
+RUN apt-get update && apt-get install -y \
+    python3.9 \
+    python3-pip \
+    python3.9-dev \
+    ffmpeg \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    poppler-utils \
+    graphviz \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set Python 3.9 as default
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.9 1
+
+# Set working directory
+WORKDIR /app
+
+# Copy requirements
+COPY requirements-base.txt .
+COPY requirements-gpu.txt .
+
+# Install Python dependencies with CUDA support
+RUN pip3 install --no-cache-dir -r requirements-gpu.txt
+
+# Install PyTorch with CUDA 11.8
+RUN pip3 install --no-cache-dir \
+    torch==2.0.1+cu118 \
+    torchvision==0.15.2+cu118 \
+    --extra-index-url https://download.pytorch.org/whl/cu118
+
+# Copy application
+COPY . .
+
+# Set environment variables
+ENV OMP_NUM_THREADS=1
+ENV CUDA_LAUNCH_BLOCKING=0
+ENV TORCH_CUDNN_V8_API_ENABLED=1

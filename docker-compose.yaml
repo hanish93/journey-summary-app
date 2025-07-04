@@ -1,39 +1,77 @@
-version: '3.8'
+# version: '3.9'
 
 services:
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    image: journey-summary-web:3.9
     volumes:
       - ./uploads:/app/uploads
-      - ./training_data:/app/training_data
+      - ./training_data:/app/data/training_data
       - ./models:/app/models
       - ./exports:/app/exports
     ports:
       - "5000:5000"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
     depends_on:
       - redis
+    command: gunicorn app.main:app --bind 0.0.0.0:5000 --worker-class eventlet --workers 1
 
   video_worker:
-    build: .
-    command: celery -A app.video_processor worker --loglevel=info
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    image: journey-summary-gpu:3.9
     volumes:
       - ./uploads:/app/uploads
-      - ./training_data:/app/training_data
+      - ./training_data:/app/data/training_data
       - ./models:/app/models
       - ./exports:/app/exports
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    command: celery -A app.celery worker -Q video -l INFO --concurrency=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       - redis
       - web
 
   training_worker:
-    build: .
-    command: celery -A app.training worker --loglevel=info
+    image: journey-summary-gpu:3.9
     volumes:
-      - ./training_data:/app/training_data
+      - ./training_data:/app/data/training_data
       - ./models:/app/models
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+    command: celery -A app.celery worker -Q training -l INFO --concurrency=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       - redis
       - web
 
   redis:
-    image: "redis:alpine"
+    image: "redis:7.0-alpine"
+    command: redis-server --save 60 1 --loglevel warning
+
+networks:
+  default:
+    name: journey-network
+    driver: bridge

@@ -1,0 +1,12 @@
+# Core application
+Flask
+gunicorn
+eventlet==0.30.2
+
+# Task queue
+celery[redis]==5.3.4
+redis
+
+# Utilities
+python-dotenv==1.0.0
+tqdm==4.65.0

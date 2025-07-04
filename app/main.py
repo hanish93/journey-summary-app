@@ -1,5 +1,5 @@
 from flask import Flask, render_template
-import routes
+from .routes import routes
 from .training import check_and_retrain
 
 app = Flask(__name__)
